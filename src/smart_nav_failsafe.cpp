@@ -19,6 +19,13 @@ public:
         rmw_qos_profile_t qos_profile = rmw_qos_profile_sensor_data;
         auto qos = rclcpp::QoS(rclcpp::QoSInitialization(qos_profile.history, 5), qos_profile);
 
+        // 🎯 ROS 2 Parameters Declaration (No more hardcoding!)
+        this->declare_parameter<float>("power_consumption_constant", 0.009f);
+        this->declare_parameter<float>("safety_margin", 0.15f);
+        this->declare_parameter<float>("target_x", 10.0f);
+        this->declare_parameter<float>("target_y", 10.0f);
+        this->declare_parameter<float>("target_z", -4.0f);
+
         offboard_control_mode_publisher_ = this->create_publisher<px4_msgs::msg::OffboardControlMode>("/fmu/in/offboard_control_mode", qos);
         trajectory_setpoint_publisher_ = this->create_publisher<px4_msgs::msg::TrajectorySetpoint>("/fmu/in/trajectory_setpoint", qos);
         vehicle_command_publisher_ = this->create_publisher<px4_msgs::msg::VehicleCommand>("/fmu/in/vehicle_command", qos);
@@ -30,7 +37,7 @@ public:
 
         timer_ = this->create_wall_timer(100ms, std::bind(&SmartNavFailsafeNode::master_supervisor_loop, this));
 
-        RCLCPP_INFO(this->get_logger(), "\033[92m🛡️ Multi-Threaded IDA* Core Node Initialized!\033[0m");
+        RCLCPP_INFO(this->get_logger(), "\033[92m🛡️ Dynamic Parameter Node Initialized!\033[0m");
     }
 
     ~SmartNavFailsafeNode() {
@@ -96,7 +103,6 @@ private:
         std::vector<std::vector<float>> finalized_path;
 
         while (true) {
-            // 🔒 SAFETY INTERCEPT: If Thread 1 triggers failsafe, close Thread 2 instantly!
             {
                 std::lock_guard<std::mutex> lock(data_mutex_);
                 if (failsafe_triggered_) {
@@ -145,14 +151,19 @@ private:
         std::lock_guard<std::mutex> lock(data_mutex_);
         if (failsafe_triggered_) return;
 
+        // 🎯 Fetch Live Parameters dynamically on every loop tick
+        float power_consumption_constant = this->get_parameter("power_consumption_constant").as_double();
+        float safety_margin = this->get_parameter("safety_margin").as_double();
+        float target_x = this->get_parameter("target_x").as_double();
+        float target_y = this->get_parameter("target_y").as_double();
+        float target_z = this->get_parameter("target_z").as_double();
+
         if (counter_ > 50 && simulated_battery_ > 0.0) {
             simulated_battery_ -= 0.003; 
         }
         float effective_battery = simulated_battery_; 
 
         float distance_to_home = std::sqrt(current_x_*current_x_ + current_y_*current_y_ + current_z_*current_z_);
-        float power_consumption_constant = 0.009; 
-        float safety_margin = 0.15;               
         float battery_required_to_return = (distance_to_home * power_consumption_constant) + safety_margin;
 
         if (counter_ % 10 == 0 && current_altitude_ > 0.5) {
@@ -176,15 +187,15 @@ private:
 
         if (counter_ == 60) {
             std::vector<float> start = {current_x_, current_y_, current_z_};
-            std::vector<float> goal = {10.0, 10.0, -4.0}; 
+            std::vector<float> goal = {target_x, target_y, target_z}; 
             pathfinding_thread_ = std::thread(&SmartNavFailsafeNode::async_ida_star_worker, this, start, goal);
             pathfinding_thread_.detach(); 
         }
 
         if (counter_ >= 0 && counter_ < 60) {
-            publish_trajectory_setpoint(0.0, 0.0, -4.0); 
+            publish_trajectory_setpoint(0.0, 0.0, target_z); 
         } else if (counter_ >= 60 && path_ready_) {
-            publish_trajectory_setpoint(10.0, 10.0, -4.0);
+            publish_trajectory_setpoint(target_x, target_y, target_z);
         }
 
         counter_++;

@@ -23,7 +23,10 @@ if(BUILD_TESTING)
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
-
+# Install launch files
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
 ament_package()
 add_executable(smart_nav_node src/smart_nav_failsafe.cpp)
 ament_target_dependencies(smart_nav_node rclcpp px4_msgs geometry_msgs nav_msgs)
