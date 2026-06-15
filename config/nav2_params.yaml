@@ -1,0 +1,69 @@
+planner_server:
+  ros__parameters:
+    expected_planner_frequency: 20.0
+    planner_plugins: ["GridBased"]
+    # 🎯 TASK 1: Using Smac Planner instead of default NavFn
+    GridBased:
+      plugin: "nav2_smac_planner/SmacPlannerLattice"
+      allow_unknown: true
+      max_iterations: 1000000
+      max_planning_time: 2.0
+      analytic_expansion_ratio: 3.5
+      # Quadcopter constraints for omnidirectional movement
+      motion_model_for_search: "DUBIN" # Will behave omnidirectionally with lattice parameters
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: map
+      robot_base_frame: base_link
+      use_sim_time: true
+      robot_radius: 0.3 # Drone's physical radius applied here
+      plugins: ["static_layer", "stvl_layer", "inflation_layer"]
+      
+      # 🎯 TASK 2: STVL Plugin Ingesting /octomap_binary under the hood
+      stvl_layer:
+        plugin: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"
+        enabled: true
+        voxel_decay: 15.0
+        decay_model: 0
+        voxel_size: 0.05
+        vertical_m_range: 10.0
+        map_save_duration: 60.0
+        observation_sources: pointcloud
+        pointcloud:
+          data_type: PointCloud2
+          topic: /octomap_point_cloud_centers # Extracted from octomap_binary handshake
+          marking: true
+          clearing: true
+          max_z: 10.0
+          min_z: -0.5
+          vertical_filter_min: -0.1
+          vertical_filter_max: 0.1
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      use_sim_time: true
+      robot_radius: 0.3
+      plugins: ["stvl_layer", "inflation_layer"]
+      
+      stvl_layer:
+        plugin: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"
+        enabled: true
+        voxel_decay: 5.0
+        decay_model: 0
+        voxel_size: 0.05
+        vertical_m_range: 5.0
+        observation_sources: pointcloud
+        pointcloud:
+          data_type: PointCloud2
+          topic: /octomap_point_cloud_centers
+          marking: true
+          clearing: true
